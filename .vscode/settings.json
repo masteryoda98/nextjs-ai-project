@@ -1,0 +1,90 @@
+{
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": true
+  },
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "files.associations": {
+    "*.css": "tailwindcss"
+  },
+  "tailwindCSS.includeLanguages": {
+    "typescript": "javascript",
+    "typescriptreact": "javascript"
+  },
+  "typescript.preferences.importModuleSpecifier": "non-relative",
+  "eslint.validate": ["javascript", "javascriptreact", "typescript", "typescriptreact"],
+  "editor.quickSuggestions": {
+    "strings": true
+  },
+  // Custom settings for Server/Client Component separation
+  "workbench.colorCustomizations": {
+    "editorError.foreground": "#ff0000",
+    "editorWarning.foreground": "#ff9900",
+    "editorInfo.foreground": "#00aaff"
+  },
+  "editor.tokenColorCustomizations": {
+    "textMateRules": [
+      {
+        "scope": "comment.line.double-slash.js",
+        "settings": {
+          "foreground": "#5C6370"
+        }
+      }
+    ]
+  },
+  // Custom file templates
+  "files.defaultLanguage": "typescript",
+  // Custom snippets for Server/Client Components
+  "editor.snippets": {
+    "typescript.react": [
+      {
+        "name": "Server Component",
+        "prefix": "sc",
+        "body": [
+          "import React from 'react'",
+          "",
+          "interface ${1:ComponentName}Props {",
+          "  ${2:prop}: ${3:type}",
+          "}",
+          "",
+          "export default async function ${1:ComponentName}({ ${2:prop} }: ${1:ComponentName}Props) {",
+          "  // Server-side code here",
+          "  $0",
+          "  return (",
+          "    <div>",
+          "      ${4:content}",
+          "    </div>",
+          "  )",
+          "}"
+        ],
+        "description": "Create a new Server Component"
+      },
+      {
+        "name": "Client Component",
+        "prefix": "cc",
+        "body": [
+          "\"use client\"",
+          "",
+          "import React from 'react'",
+          "",
+          "interface ${1:ComponentName}Props {",
+          "  ${2:prop}: ${3:type}",
+          "}",
+          "",
+          "export default function ${1:ComponentName}({ ${2:prop} }: ${1:ComponentName}Props) {",
+          "  // Client-side code here",
+          "  $0",
+          "  return (",
+          "    <div>",
+          "      ${4:content}",
+          "    </div>",
+          "  )",
+          "}"
+        ],
+        "description": "Create a new Client Component"
+      }
+    ]
+  }
+}

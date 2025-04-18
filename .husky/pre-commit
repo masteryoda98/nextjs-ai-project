@@ -1,0 +1,14 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+# Run component audit
+npx ts-node scripts/component-audit.ts
+
+# If the audit fails, prevent the commit
+if [ $? -ne 0 ]; then
+ echo "❌ Component audit failed. Please fix the issues before committing."
+ exit 1
+fi
+
+# Continue with other checks
+npx lint-staged

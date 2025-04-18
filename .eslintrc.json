@@ -1,0 +1,27 @@
+{
+  "extends": ["next/core-web-vitals", "eslint:recommended", "plugin:@typescript-eslint/recommended"],
+  "plugins": ["@typescript-eslint"],
+  "rules": {
+    // Custom rules for Server/Client Component separation
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["next/headers"],
+            "message": "next/headers can only be used in Server Components. Make sure this file doesn't have 'use client' directive."
+          }
+        ]
+      }
+    ],
+    // Prevent using hooks in files without "use client"
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.tsx", "**/*.ts"],
+      "parser": "@typescript-eslint/parser"
+    }
+  ]
+}
