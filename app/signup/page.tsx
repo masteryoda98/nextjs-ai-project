@@ -65,12 +65,35 @@ export default function SignUpPage() {
     })
   }, [form.formState])
 
+  // Log validation errors whenever they change
+  useEffect(() => {
+    if (Object.keys(form.formState.errors).length > 0) {
+      console.log("Validation errors:", form.formState.errors)
+    }
+  }, [form.formState.errors])
+
+  // Debug form values
+  useEffect(() => {
+    console.log("Form values:", {
+      ...form.getValues(),
+      password: form.getValues().password ? "***" : "",
+      confirmPassword: form.getValues().confirmPassword ? "***" : "",
+    })
+  }, [form.watch()])
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
     console.log("Form submitted with values:", { ...values, password: "***", confirmPassword: "***" })
+
+    if (!form.formState.isValid) {
+      console.error("Form is invalid. Validation errors:", form.formState.errors)
+      return
+    }
+
     setIsSubmitting(true)
     setFormError(null)
 
     try {
+      console.log("Calling Supabase auth.signUp...")
       const { data, error } = await supabase.auth.signUp({
         email: values.email,
         password: values.password,
@@ -93,6 +116,7 @@ export default function SignUpPage() {
           variant: "destructive",
         })
       } else {
+        console.log("Signup successful, redirecting to verify-email")
         toast({
           title: "Verification email sent",
           description: "Please check your email to verify your account.",
@@ -115,7 +139,24 @@ export default function SignUpPage() {
   // Function to handle manual form submission
   const handleManualSubmit = () => {
     console.log("Manual submit button clicked")
-    form.handleSubmit(onSubmit)()
+
+    // Log current form state before submission
+    console.log("Current form state before manual submission:", {
+      values: form.getValues(),
+      errors: form.formState.errors,
+      isValid: form.formState.isValid,
+      isDirty: form.formState.isDirty,
+    })
+
+    // Trigger validation before submission
+    form.trigger().then((isValid) => {
+      console.log("Form validation result:", isValid)
+      if (isValid) {
+        form.handleSubmit(onSubmit)()
+      } else {
+        console.error("Form validation failed:", form.formState.errors)
+      }
+    })
   }
 
   return (
@@ -153,7 +194,13 @@ export default function SignUpPage() {
           )}
 
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form
+              onSubmit={(e) => {
+                console.log("Form onSubmit event triggered")
+                form.handleSubmit(onSubmit)(e)
+              }}
+              className="space-y-4"
+            >
               <FormField
                 control={form.control}
                 name="name"
@@ -212,7 +259,14 @@ export default function SignUpPage() {
                 render={({ field }) => (
                   <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
                     <FormControl>
-                      <Checkbox checked={field.value} onCheckedChange={field.onChange} id="terms" />
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={(checked) => {
+                          console.log("Checkbox changed:", checked)
+                          field.onChange(checked)
+                        }}
+                        id="terms"
+                      />
                     </FormControl>
                     <div className="space-y-1 leading-none">
                       <FormLabel htmlFor="terms">
@@ -232,7 +286,12 @@ export default function SignUpPage() {
               />
 
               {/* Regular submit button */}
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={isSubmitting}
+                onClick={() => console.log("Submit button clicked")}
+              >
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
