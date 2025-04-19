@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { useRouter } from "next/navigation"
 
 const formSchema = z
@@ -36,11 +37,16 @@ const formSchema = z
     path: ["confirmPassword"],
   })
 
-export default function SignUpPage() {
+export default function RobustSignUpPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [debugInfo, setDebugInfo] = useState<any>(null)
+  const [showDebug, setShowDebug] = useState(false)
+
+  // Create Supabase client
+  const supabase = createClientComponentClient()
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -56,35 +62,54 @@ export default function SignUpPage() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true)
     setFormError(null)
+    setDebugInfo(null)
+
+    const debug: any = {
+      timestamp: new Date().toISOString(),
+      formValues: { ...values, password: "***", confirmPassword: "***" },
+    }
 
     try {
-      // Create form data for submission
-      const formData = new FormData()
-      formData.append("name", values.name)
-      formData.append("email", values.email)
-      formData.append("password", values.password)
-
-      // Submit to our API route instead of directly to Supabase
-      const response = await fetch("/api/signup", {
-        method: "POST",
-        body: formData,
-      })
-
-      // Handle non-JSON responses
-      const contentType = response.headers.get("content-type")
-      if (!contentType || !contentType.includes("application/json")) {
-        throw new Error("Server returned non-JSON response")
+      // Test Supabase connectivity first
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        debug.sessionCheck = {
+          success: !sessionError,
+          error: sessionError ? sessionError.message : null,
+          hasSession: !!sessionData.session,
+        }
+      } catch (error: any) {
+        debug.sessionCheck = {
+          error: error.message,
+        }
       }
 
-      // Parse response
-      const data = await response.json()
+      // Attempt signup
+      debug.signupAttempt = { timestamp: new Date().toISOString() }
 
-      if (!response.ok || !data.success) {
-        const errorMessage = data.error || "Failed to create account"
-        setFormError(errorMessage)
+      const { data, error } = await supabase.auth.signUp({
+        email: values.email,
+        password: values.password,
+        options: {
+          data: {
+            name: values.name,
+            role: "CREATOR",
+          },
+          emailRedirectTo: `${window.location.origin}/verify-email`,
+        },
+      })
+
+      debug.signupResponse = {
+        success: !error,
+        error: error ? error.message : null,
+        data: data ? { user: data.user ? { id: data.user.id } : null } : null,
+      }
+
+      if (error) {
+        setFormError(error.message)
         toast({
           title: "Sign up failed",
-          description: errorMessage,
+          description: error.message,
           variant: "destructive",
         })
       } else {
@@ -94,8 +119,8 @@ export default function SignUpPage() {
         })
         router.push("/verify-email")
       }
-    } catch (error) {
-      console.error("Error submitting form:", error)
+    } catch (error: any) {
+      debug.unexpectedError = error.message
       setFormError("Something went wrong. Please try again later.")
       toast({
         title: "Sign up failed",
@@ -103,6 +128,7 @@ export default function SignUpPage() {
         variant: "destructive",
       })
     } finally {
+      setDebugInfo(debug)
       setIsSubmitting(false)
     }
   }
@@ -219,6 +245,7 @@ export default function SignUpPage() {
                   </FormItem>
                 )}
               />
+
               <Button type="submit" className="w-full" disabled={isSubmitting}>
                 {isSubmitting ? (
                   <>
@@ -238,6 +265,18 @@ export default function SignUpPage() {
               Sign in
             </Link>
           </p>
+
+          <div className="mt-4">
+            <button onClick={() => setShowDebug(!showDebug)} className="text-xs text-muted-foreground hover:underline">
+              {showDebug ? "Hide" : "Show"} Debug Info
+            </button>
+
+            {showDebug && debugInfo && (
+              <div className="mt-2 p-2 bg-muted rounded-md">
+                <pre className="text-xs overflow-auto max-h-[200px]">{JSON.stringify(debugInfo, null, 2)}</pre>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
