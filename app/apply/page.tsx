@@ -1,253 +1,350 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
-import { Loader2 } from "lucide-react"
-
-import { Button } from "@/components/ui/button"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { useSearchParams, useRouter } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { CheckCircle2, ArrowLeft, Loader2 } from "lucide-react"
+import Link from "next/link"
+import { Logo } from "@/components/logo"
 import { useToast } from "@/hooks/use-toast"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 
-const formSchema = z.object({
-  socialMediaLink: z.string().url({
-    message: "Please enter a valid URL.",
+// Define form validation schema
+const applicationSchema = z.object({
+  full_name: z.string().min(2, { message: "Full name must be at least 2 characters" }),
+  email: z.string().email({ message: "Please enter a valid email address" }),
+  phone_number: z.string().min(10, { message: "Please enter a valid phone number" }),
+  tiktok_handle: z.string().min(2, { message: "TikTok handle must be at least 2 characters" }),
+  follower_count: z.string().refine((val) => !isNaN(Number(val)) && Number(val) > 0, {
+    message: "Follower count must be a positive number",
   }),
-  description: z.string().min(10, {
-    message: "Description must be at least 10 characters.",
-  }),
+  content_niche: z.string().min(2, { message: "Content niche must be at least 2 characters" }),
+  reason: z.string().min(20, { message: "Please provide more details about why you want to join" }),
+  portfolio_link: z.string().url({ message: "Please enter a valid URL" }).optional().or(z.literal("")),
 })
 
-export default function ApplyPage() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const campaignId = searchParams.get("id")
+type ApplicationFormValues = z.infer<typeof applicationSchema>
+
+export default function CreatorApplyPage() {
+  const [submitted, setSubmitted] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
   const { toast } = useToast()
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [campaign, setCampaign] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const email = searchParams.get("email")
   const supabase = createClientComponentClient()
 
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
+  // Initialize form with validation
+  const form = useForm<ApplicationFormValues>({
+    resolver: zodResolver(applicationSchema),
     defaultValues: {
-      socialMediaLink: "",
-      description: "",
+      full_name: "",
+      email: email || "",
+      phone_number: "",
+      tiktok_handle: "",
+      follower_count: "",
+      content_niche: "",
+      reason: "",
+      portfolio_link: "",
     },
   })
 
+  // If user is logged in, pre-fill the form with their data
   useEffect(() => {
-    async function fetchCampaign() {
-      if (!campaignId) {
-        setError("No campaign ID provided")
-        setLoading(false)
-        return
-      }
-
+    async function loadUserData() {
       try {
-        const response = await fetch(`/api/apply/${campaignId}`)
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
 
-        // Check if response is OK
-        if (!response.ok) {
-          throw new Error(`Failed to fetch campaign: ${response.status}`)
+        if (session?.user) {
+          // Get user profile data
+          const { data: userData, error } = await supabase
+            .from("creatoramp_users")
+            .select("*")
+            .eq("id", session.user.id)
+            .single()
+
+          if (!error && userData) {
+            // Pre-fill the form with user data
+            form.setValue("full_name", userData.name || "")
+            form.setValue("email", userData.email || "")
+            form.setValue("phone_number", userData.phone || "")
+            form.setValue("tiktok_handle", userData.tiktok_handle || "")
+            form.setValue("follower_count", userData.follower_count?.toString() || "")
+            form.setValue("content_niche", userData.content_niche || "")
+          }
         }
-
-        // Check content type
-        const contentType = response.headers.get("content-type")
-        if (!contentType || !contentType.includes("application/json")) {
-          throw new Error("Server returned non-JSON response")
-        }
-
-        const data = await response.json()
-
-        if (data.error) {
-          throw new Error(data.error)
-        }
-
-        setCampaign(data.campaign)
       } catch (error) {
-        console.error("Error fetching campaign:", error)
-        setError(error instanceof Error ? error.message : "Failed to load campaign")
+        console.error("Error loading user data:", error)
       } finally {
-        setLoading(false)
+        setInitialLoading(false)
       }
     }
 
-    fetchCampaign()
-  }, [campaignId])
+    loadUserData()
+  }, [form, supabase])
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (!campaignId) {
-      toast({
-        title: "Error",
-        description: "No campaign ID provided",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setIsSubmitting(true)
-    setError(null)
+  const onSubmit = async (values: ApplicationFormValues) => {
+    setLoading(true)
 
     try {
-      // Check if user is authenticated
+      // Check if user is logged in
       const {
-        data: { user },
-      } = await supabase.auth.getUser()
+        data: { session },
+      } = await supabase.auth.getSession()
+      const userId = session?.user?.id
 
-      if (!user) {
+      if (!userId) {
+        // Store form data in localStorage
+        localStorage.setItem("applicationFormData", JSON.stringify(values))
+
+        // Redirect to login
         toast({
-          title: "Authentication required",
-          description: "Please sign in to apply for this campaign",
-          variant: "destructive",
+          title: "Login required",
+          description: "Please log in to submit your application",
         })
-        router.push(`/login?redirect=/apply?id=${campaignId}`)
+        router.push(`/login?redirect=/apply`)
         return
       }
 
-      // Create form data
-      const formData = new FormData()
-      formData.append("socialMediaLink", values.socialMediaLink)
-      formData.append("description", values.description)
-
-      // Submit application
-      const response = await fetch(`/api/apply/${campaignId}`, {
+      const res = await fetch("/api/apply", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...values,
+          userId,
+        }),
       })
 
-      // Check if response is OK
-      if (!response.ok) {
-        const contentType = response.headers.get("content-type")
-        if (contentType && contentType.includes("application/json")) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || `Server error: ${response.status}`)
-        } else {
-          throw new Error(`Server error: ${response.status}`)
-        }
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ message: "Failed to submit application" }))
+        throw new Error(errorData.message || "Failed to submit application")
       }
 
-      // Check content type
-      const contentType = response.headers.get("content-type")
-      if (!contentType || !contentType.includes("application/json")) {
-        throw new Error("Server returned non-JSON response")
-      }
-
-      const data = await response.json()
-
-      if (data.error) {
-        throw new Error(data.error)
-      }
-
+      setSubmitted(true)
       toast({
         title: "Application submitted",
-        description: "Your application has been submitted successfully",
+        description: "We'll review your application and get back to you soon.",
       })
-
-      router.push("/dashboard/creator")
     } catch (error) {
       console.error("Error submitting application:", error)
-      setError(error instanceof Error ? error.message : "Failed to submit application")
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to submit application",
         variant: "destructive",
       })
     } finally {
-      setIsSubmitting(false)
+      setLoading(false)
     }
   }
 
-  if (loading) {
+  if (initialLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     )
   }
 
-  if (error) {
+  if (submitted) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
-          <span className="block sm:inline">{error}</span>
-        </div>
-      </div>
-    )
-  }
+      <div className="min-h-screen flex flex-col">
+        <header className="border-b border-border/40 bg-background">
+          <div className="container flex h-16 items-center justify-between py-4">
+            <Link href="/" className="flex items-center gap-2">
+              <Logo />
+            </Link>
+          </div>
+        </header>
 
-  if (!campaign) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded relative" role="alert">
-          <span className="block sm:inline">Campaign not found</span>
+        <div className="flex-1 flex items-center justify-center p-4">
+          <Card className="w-full max-w-xl text-center">
+            <CardHeader>
+              <CheckCircle2 className="mx-auto text-green-500" size={48} />
+              <CardTitle className="text-2xl mt-4">Application Submitted</CardTitle>
+              <CardDescription>Thanks for applying to join CreatorAmp!</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-muted-foreground">
+                Our team will review your application and get back to you within 2-3 business days.
+              </p>
+              <Button asChild>
+                <Link href="/">Return to Home</Link>
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold mb-6">Apply for Campaign: {campaign.title}</h1>
+    <div className="min-h-screen flex flex-col">
+      <header className="border-b border-border/40 bg-background">
+        <div className="container flex h-16 items-center justify-between py-4">
+          <Link href="/" className="flex items-center gap-2">
+            <Logo />
+          </Link>
+        </div>
+      </header>
 
-      <div className="bg-gray-50 p-4 rounded mb-6">
-        <h2 className="font-semibold mb-2">Campaign Details</h2>
-        <p className="mb-2">{campaign.description}</p>
-        <p className="text-sm text-gray-500">Budget: ${campaign.budget}</p>
+      <div className="flex-1 flex items-center justify-center p-4">
+        <Card className="w-full max-w-xl">
+          <CardHeader>
+            <Link
+              href="/"
+              className="flex items-center gap-2 text-sm text-muted-foreground mb-4 hover:text-foreground transition-colors"
+            >
+              <ArrowLeft size={16} />
+              Back to home
+            </Link>
+            <CardTitle className="text-2xl font-bold">Apply to Join as a Creator</CardTitle>
+            <CardDescription>Fill out this form to apply to become a creator on CreatorAmp</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="full_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Full Name</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input type="email" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="phone_number"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone Number</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="tiktok_handle"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>TikTok Handle</FormLabel>
+                      <FormControl>
+                        <Input placeholder="@username" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="follower_count"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Follower Count</FormLabel>
+                      <FormControl>
+                        <Input type="number" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="content_niche"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Content Niche</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., Dance, Comedy, Lifestyle" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="reason"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Why Do You Want to Join?</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Tell us why you're interested in promoting music on TikTok"
+                          className="min-h-[100px]"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="portfolio_link"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Portfolio / TikTok Link (Optional)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="https://tiktok.com/@yourusername" {...field} />
+                      </FormControl>
+                      <FormDescription>Provide a link to your TikTok profile or portfolio</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <Button type="submit" disabled={loading} className="w-full mt-6">
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Submitting...
+                    </>
+                  ) : (
+                    "Submit Application"
+                  )}
+                </Button>
+              </form>
+            </Form>
+          </CardContent>
+        </Card>
       </div>
-
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          <FormField
-            control={form.control}
-            name="socialMediaLink"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Social Media Link</FormLabel>
-                <FormControl>
-                  <Input placeholder="https://tiktok.com/@yourusername" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="description"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Why are you a good fit for this campaign?</FormLabel>
-                <FormControl>
-                  <Textarea
-                    placeholder="Describe your audience and why you'd be a good fit..."
-                    className="min-h-[120px]"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
-            {isSubmitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Submitting application...
-              </>
-            ) : (
-              "Submit Application"
-            )}
-          </Button>
-        </form>
-      </Form>
     </div>
   )
 }
