@@ -1,55 +1,38 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
-import * as z from "zod"
-import { Loader2 } from "lucide-react"
+import Link from "next/link"
+import { Loader2, ArrowLeft } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-
-const formSchema = z.object({
-  full_name: z.string().min(2, { message: "Name must be at least 2 characters." }),
-  email: z.string().email({ message: "Please enter a valid email address." }),
-  phone_number: z.string().min(10, { message: "Please enter a valid phone number." }),
-  tiktok_handle: z.string().min(1, { message: "TikTok handle is required." }),
-  follower_count: z.string().refine((val) => !isNaN(Number(val)) && Number(val) > 0, {
-    message: "Please enter a valid follower count.",
-  }),
-  content_niche: z.string().min(1, { message: "Please select your content niche." }),
-  reason: z.string().min(10, { message: "Please tell us why you want to join." }),
-  portfolio_link: z.string().url({ message: "Please enter a valid URL." }).optional().or(z.literal("")),
-})
+import { Logo } from "@/components/logo"
 
 export default function ApplyPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [userId, setUserId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const supabase = createClientComponentClient()
-
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      full_name: "",
-      email: "",
-      phone_number: "",
-      tiktok_handle: "",
-      follower_count: "",
-      content_niche: "",
-      reason: "",
-      portfolio_link: "",
-    },
+  const [formData, setFormData] = useState({
+    full_name: "",
+    email: "",
+    phone_number: "",
+    tiktok_handle: "",
+    follower_count: "",
+    content_niche: "",
+    reason: "",
+    portfolio_link: "",
   })
+  const [userId, setUserId] = useState<string | null>(null)
+  const supabase = createClientComponentClient()
 
   useEffect(() => {
     async function checkAuth() {
@@ -69,7 +52,6 @@ export default function ApplyPage() {
           toast({
             title: "Login required",
             description: "Please log in to apply as a creator",
-            variant: "destructive",
           })
           router.push("/login?redirect=/apply")
           return
@@ -88,7 +70,7 @@ export default function ApplyPage() {
           console.error("Error fetching user data:", userError)
         } else if (userData) {
           // Pre-fill the form with user data
-          form.reset({
+          setFormData({
             full_name: userData.name || "",
             email: userData.email || "",
             phone_number: userData.phone || "",
@@ -108,9 +90,16 @@ export default function ApplyPage() {
     }
 
     checkAuth()
-  }, [form, router, supabase, toast])
+  }, [router, supabase, toast])
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target
+    setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
     if (!userId) {
       toast({
         title: "Login required",
@@ -121,10 +110,28 @@ export default function ApplyPage() {
       return
     }
 
+    // Basic validation
+    if (
+      !formData.full_name ||
+      !formData.email ||
+      !formData.phone_number ||
+      !formData.tiktok_handle ||
+      !formData.follower_count ||
+      !formData.content_niche ||
+      !formData.reason
+    ) {
+      toast({
+        title: "Missing information",
+        description: "Please fill out all required fields",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsSubmitting(true)
 
     try {
-      console.log("Submitting application with values:", values)
+      console.log("Submitting application with values:", formData)
 
       const response = await fetch("/api/apply", {
         method: "POST",
@@ -132,7 +139,7 @@ export default function ApplyPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          ...values,
+          ...formData,
           userId,
         }),
       })
@@ -182,155 +189,128 @@ export default function ApplyPage() {
   }
 
   return (
-    <div className="container mx-auto py-10">
-      <Card className="mx-auto max-w-2xl">
-        <CardHeader>
-          <CardTitle>Apply as a Creator</CardTitle>
-          <CardDescription>
-            Fill out this form to apply as a creator on our platform. We'll review your application and get back to you
-            soon.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <FormField
-                control={form.control}
-                name="full_name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Full Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Your full name" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+    <div className="min-h-screen flex flex-col">
+      <header className="border-b border-border/40 bg-background">
+        <div className="container flex h-16 items-center justify-between py-4">
+          <Link href="/" className="flex items-center gap-2">
+            <Logo />
+          </Link>
+        </div>
+      </header>
 
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input type="email" placeholder="your.email@example.com" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+      <div className="flex-1 flex items-center justify-center p-4">
+        <Card className="w-full max-w-xl">
+          <CardHeader>
+            <Link
+              href="/"
+              className="flex items-center gap-2 text-sm text-muted-foreground mb-4 hover:text-foreground transition-colors"
+            >
+              <ArrowLeft size={16} />
+              Back to home
+            </Link>
+            <CardTitle className="text-2xl font-bold">Apply to Join as a Creator</CardTitle>
+            <CardDescription>Fill out this form to apply to become a creator on CreatorAmp</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="full_name">Full Name</Label>
+                <Input id="full_name" name="full_name" value={formData.full_name} onChange={handleChange} required />
+              </div>
 
-              <FormField
-                control={form.control}
-                name="phone_number"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Phone Number</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Your phone number" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required />
+              </div>
 
-              <FormField
-                control={form.control}
-                name="tiktok_handle"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>TikTok Handle</FormLabel>
-                    <FormControl>
-                      <Input placeholder="@yourtiktokhandle" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="space-y-2">
+                <Label htmlFor="phone_number">Phone Number</Label>
+                <Input
+                  id="phone_number"
+                  name="phone_number"
+                  value={formData.phone_number}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
 
-              <FormField
-                control={form.control}
-                name="follower_count"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Follower Count</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="10000" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="space-y-2">
+                <Label htmlFor="tiktok_handle">TikTok Handle</Label>
+                <Input
+                  id="tiktok_handle"
+                  name="tiktok_handle"
+                  placeholder="@username"
+                  value={formData.tiktok_handle}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
 
-              <FormField
-                control={form.control}
-                name="content_niche"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Content Niche</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select your content niche" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="Music">Music</SelectItem>
-                        <SelectItem value="Fashion">Fashion</SelectItem>
-                        <SelectItem value="Beauty">Beauty</SelectItem>
-                        <SelectItem value="Fitness">Fitness</SelectItem>
-                        <SelectItem value="Food">Food</SelectItem>
-                        <SelectItem value="Travel">Travel</SelectItem>
-                        <SelectItem value="Gaming">Gaming</SelectItem>
-                        <SelectItem value="Comedy">Comedy</SelectItem>
-                        <SelectItem value="Education">Education</SelectItem>
-                        <SelectItem value="Lifestyle">Lifestyle</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="space-y-2">
+                <Label htmlFor="follower_count">Follower Count</Label>
+                <Input
+                  id="follower_count"
+                  name="follower_count"
+                  type="number"
+                  value={formData.follower_count}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
 
-              <FormField
-                control={form.control}
-                name="reason"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Why do you want to join?</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder="Tell us why you want to join our platform and what you can bring to the table..."
-                        className="min-h-[120px]"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="space-y-2">
+                <Label htmlFor="content_niche">Content Niche</Label>
+                <select
+                  id="content_niche"
+                  name="content_niche"
+                  value={formData.content_niche}
+                  onChange={handleChange}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  required
+                >
+                  <option value="">Select your content niche</option>
+                  <option value="Music">Music</option>
+                  <option value="Fashion">Fashion</option>
+                  <option value="Beauty">Beauty</option>
+                  <option value="Fitness">Fitness</option>
+                  <option value="Food">Food</option>
+                  <option value="Travel">Travel</option>
+                  <option value="Gaming">Gaming</option>
+                  <option value="Comedy">Comedy</option>
+                  <option value="Education">Education</option>
+                  <option value="Lifestyle">Lifestyle</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
 
-              <FormField
-                control={form.control}
-                name="portfolio_link"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Portfolio Link (Optional)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="https://yourportfolio.com" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      Share a link to your portfolio, website, or social media profiles.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="space-y-2">
+                <Label htmlFor="reason">Why do you want to join?</Label>
+                <Textarea
+                  id="reason"
+                  name="reason"
+                  placeholder="Tell us why you want to join our platform and what you can bring to the table..."
+                  className="min-h-[120px]"
+                  value={formData.reason}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
 
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
+              <div className="space-y-2">
+                <Label htmlFor="portfolio_link">Portfolio Link (Optional)</Label>
+                <Input
+                  id="portfolio_link"
+                  name="portfolio_link"
+                  placeholder="https://yourportfolio.com"
+                  value={formData.portfolio_link}
+                  onChange={handleChange}
+                />
+                <p className="text-sm text-muted-foreground">
+                  Share a link to your portfolio, website, or social media profiles.
+                </p>
+              </div>
+
+              <Button type="submit" className="w-full mt-6" disabled={isSubmitting}>
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -341,12 +321,9 @@ export default function ApplyPage() {
                 )}
               </Button>
             </form>
-          </Form>
-        </CardContent>
-        <CardFooter className="flex justify-center text-sm text-muted-foreground">
-          By submitting this application, you agree to our Terms of Service and Privacy Policy.
-        </CardFooter>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

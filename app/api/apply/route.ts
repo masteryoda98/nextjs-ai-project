@@ -17,6 +17,18 @@ export async function POST(request: Request) {
       userId,
     } = body
 
+    console.log("Received application data:", {
+      full_name,
+      email,
+      phone_number,
+      tiktok_handle,
+      follower_count,
+      content_niche,
+      reason,
+      portfolio_link,
+      userId,
+    })
+
     if (!userId) {
       return NextResponse.json({ message: "User ID is required" }, { status: 401 })
     }
@@ -45,86 +57,135 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "User not found" }, { status: 404 })
     }
 
-    // Check if the applications table exists
-    const { data: tableExists, error: tableCheckError } = await supabase
-      .from("applications")
-      .select("id")
-      .limit(1)
-      .maybeSingle()
+    // Try to insert directly into the applications table
+    try {
+      const { data: application, error: applicationError } = await supabase
+        .from("applications")
+        .insert({
+          user_id: userId,
+          full_name,
+          email,
+          phone_number,
+          tiktok_handle,
+          follower_count: Number.parseInt(follower_count),
+          content_niche,
+          reason,
+          portfolio_link: portfolio_link || null,
+          status: "PENDING",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single()
 
-    // If the table doesn't exist, create it
-    if (tableCheckError && tableCheckError.message.includes("does not exist")) {
-      console.log("Applications table doesn't exist, creating it...")
+      if (applicationError) {
+        console.error("Error creating application:", applicationError)
 
-      // Create the applications table
-      const { error: createTableError } = await supabase.rpc("create_applications_table")
+        // If the table doesn't exist, try to create it directly
+        if (applicationError.message.includes("does not exist")) {
+          console.log("Applications table doesn't exist, creating it directly...")
 
-      if (createTableError) {
-        console.error("Error creating applications table:", createTableError)
+          // Create the applications table directly
+          const { error: createTableError } = await supabase.rpc("exec_sql", {
+            sql_query: `
+              CREATE TABLE IF NOT EXISTS public.applications (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id UUID NOT NULL,
+                full_name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                phone_number TEXT NOT NULL,
+                tiktok_handle TEXT NOT NULL,
+                follower_count INTEGER NOT NULL,
+                content_niche TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                portfolio_link TEXT,
+                status TEXT NOT NULL DEFAULT 'PENDING',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+              );
+            `,
+          })
+
+          if (createTableError) {
+            console.error("Error creating applications table directly:", createTableError)
+            return NextResponse.json(
+              {
+                message: "Error creating applications table",
+                details: createTableError.message,
+              },
+              { status: 500 },
+            )
+          }
+
+          // Try inserting again after creating the table
+          const { data: retryApplication, error: retryError } = await supabase
+            .from("applications")
+            .insert({
+              user_id: userId,
+              full_name,
+              email,
+              phone_number,
+              tiktok_handle,
+              follower_count: Number.parseInt(follower_count),
+              content_niche,
+              reason,
+              portfolio_link: portfolio_link || null,
+              status: "PENDING",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .select()
+            .single()
+
+          if (retryError) {
+            console.error("Error creating application after table creation:", retryError)
+            return NextResponse.json(
+              {
+                message: "Failed to create application after table creation",
+                details: retryError.message,
+              },
+              { status: 500 },
+            )
+          }
+
+          return NextResponse.json({
+            success: true,
+            message: "Application submitted successfully after table creation",
+            application: retryApplication,
+          })
+        }
+
         return NextResponse.json(
           {
-            message: "Error creating applications table",
-            details: createTableError.message,
+            message: "Failed to create application",
+            details: applicationError.message,
           },
           { status: 500 },
         )
       }
-    }
 
-    // Create the application record
-    const { data: application, error: applicationError } = await supabase
-      .from("applications")
-      .insert({
-        user_id: userId,
-        full_name,
-        email,
-        phone_number,
-        tiktok_handle,
-        follower_count: Number.parseInt(follower_count),
-        content_niche,
-        reason,
-        portfolio_link: portfolio_link || null,
-        status: "PENDING",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+      return NextResponse.json({
+        success: true,
+        message: "Application submitted successfully",
+        application,
       })
-      .select()
-      .single()
+    } catch (error) {
+      console.error("Error in application creation:", error)
 
-    if (applicationError) {
-      console.error("Error creating application:", applicationError)
-
-      // If the error is due to missing columns, try to update the table schema
-      if (applicationError.message.includes("column") && applicationError.message.includes("does not exist")) {
-        console.log("Attempting to update applications table schema...")
-
-        // Update the applications table schema
-        const { error: updateSchemaError } = await supabase.rpc("update_applications_schema")
-
-        if (updateSchemaError) {
-          console.error("Error updating applications schema:", updateSchemaError)
-          return NextResponse.json(
-            {
-              message: "Error updating applications schema",
-              details: updateSchemaError.message,
-            },
-            { status: 500 },
-          )
-        }
-
-        // Try inserting again after updating the schema
-        const { data: retryApplication, error: retryError } = await supabase
-          .from("applications")
+      // As a fallback, try to store the application in a more generic way
+      try {
+        const { data: fallbackApplication, error: fallbackError } = await supabase
+          .from("creator_applications")
           .insert({
             user_id: userId,
-            full_name,
+            name: full_name,
             email,
-            phone_number,
+            phone: phone_number,
             tiktok_handle,
             follower_count: Number.parseInt(follower_count),
             content_niche,
             reason,
-            portfolio_link: portfolio_link || null,
+            portfolio_url: portfolio_link || null,
             status: "PENDING",
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -132,12 +193,12 @@ export async function POST(request: Request) {
           .select()
           .single()
 
-        if (retryError) {
-          console.error("Error creating application after schema update:", retryError)
+        if (fallbackError) {
+          console.error("Error creating fallback application:", fallbackError)
           return NextResponse.json(
             {
-              message: "Failed to create application after schema update",
-              details: retryError.message,
+              message: "Failed to create application (fallback method)",
+              details: fallbackError.message,
             },
             { status: 500 },
           )
@@ -145,25 +206,20 @@ export async function POST(request: Request) {
 
         return NextResponse.json({
           success: true,
-          message: "Application submitted successfully after schema update",
-          application: retryApplication,
+          message: "Application submitted successfully (fallback method)",
+          application: fallbackApplication,
         })
+      } catch (fallbackError) {
+        console.error("Error in fallback application creation:", fallbackError)
+        return NextResponse.json(
+          {
+            message: "All application creation methods failed",
+            details: error instanceof Error ? error.message : String(error),
+          },
+          { status: 500 },
+        )
       }
-
-      return NextResponse.json(
-        {
-          message: "Failed to create application",
-          details: applicationError.message,
-        },
-        { status: 500 },
-      )
     }
-
-    return NextResponse.json({
-      success: true,
-      message: "Application submitted successfully",
-      application,
-    })
   } catch (error) {
     console.error("Error processing application:", error)
     return NextResponse.json(
