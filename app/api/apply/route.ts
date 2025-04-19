@@ -23,42 +23,45 @@ export async function POST(request: Request) {
 
     const supabase = createRouteHandlerClient({ cookies })
 
-    // First, update the user profile with the provided information
-    const { error: userUpdateError } = await supabase
+    // First, check if the user exists
+    const { data: existingUser, error: userCheckError } = await supabase
       .from("creatoramp_users")
-      .update({
-        name: full_name,
+      .select("id")
+      .eq("id", userId)
+      .single()
+
+    if (userCheckError || !existingUser) {
+      console.error("User not found:", userCheckError)
+      return NextResponse.json({ message: "User not found" }, { status: 404 })
+    }
+
+    // Create the creator_applications record directly
+    const { data: application, error: applicationError } = await supabase
+      .from("creator_applications")
+      .insert({
+        user_id: userId,
+        full_name,
         email,
-        phone: phone_number,
+        phone_number,
         tiktok_handle,
         follower_count: Number.parseInt(follower_count),
         content_niche,
-        portfolio_url: portfolio_link || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", userId)
-
-    if (userUpdateError) {
-      console.error("Error updating user profile:", userUpdateError)
-      return NextResponse.json({ message: "Failed to update user profile" }, { status: 500 })
-    }
-
-    // Then, create an application record
-    const { data: application, error: applicationError } = await supabase
-      .from("applications")
-      .insert({
-        user_id: userId,
-        status: "PENDING",
         reason,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        portfolio_link: portfolio_link || null,
+        status: "PENDING",
       })
       .select()
       .single()
 
     if (applicationError) {
       console.error("Error creating application:", applicationError)
-      return NextResponse.json({ message: "Failed to create application" }, { status: 500 })
+      return NextResponse.json(
+        {
+          message: "Failed to create application",
+          details: applicationError.message,
+        },
+        { status: 500 },
+      )
     }
 
     return NextResponse.json({
@@ -68,6 +71,12 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error("Error processing application:", error)
-    return NextResponse.json({ message: "An unexpected error occurred" }, { status: 500 })
+    return NextResponse.json(
+      {
+        message: "An unexpected error occurred",
+        details: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 },
+    )
   }
 }
