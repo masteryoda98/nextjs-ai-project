@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
@@ -41,6 +41,7 @@ export default function SignUpPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
   const supabase = createClientComponentClient()
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -52,10 +53,23 @@ export default function SignUpPage() {
       confirmPassword: "",
       terms: false,
     },
+    mode: "onChange", // Validate on change for better user feedback
   })
 
+  // Debug form state changes
+  useEffect(() => {
+    console.log("Form state:", {
+      isDirty: form.formState.isDirty,
+      isValid: form.formState.isValid,
+      errors: form.formState.errors,
+    })
+  }, [form.formState])
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    console.log("Form submitted with values:", { ...values, password: "***", confirmPassword: "***" })
     setIsSubmitting(true)
+    setFormError(null)
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email: values.email,
@@ -67,7 +81,12 @@ export default function SignUpPage() {
           },
         },
       })
+
+      console.log("Supabase response:", { data, error })
+
       if (error) {
+        console.error("Signup error:", error)
+        setFormError(error.message)
         toast({
           title: "Sign up failed",
           description: error.message,
@@ -81,6 +100,8 @@ export default function SignUpPage() {
         router.push("/verify-email")
       }
     } catch (error) {
+      console.error("Unexpected error during signup:", error)
+      setFormError("Something went wrong. Please try again later.")
       toast({
         title: "Sign up failed",
         description: "Something went wrong. Please try again later.",
@@ -89,6 +110,12 @@ export default function SignUpPage() {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  // Function to handle manual form submission
+  const handleManualSubmit = () => {
+    console.log("Manual submit button clicked")
+    form.handleSubmit(onSubmit)()
   }
 
   return (
@@ -118,6 +145,13 @@ export default function SignUpPage() {
             <h1 className="text-2xl font-semibold tracking-tight">Create an account</h1>
             <p className="text-sm text-muted-foreground">Enter your email below to create your account</p>
           </div>
+
+          {formError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
+              <span className="block sm:inline">{formError}</span>
+            </div>
+          )}
+
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
@@ -140,7 +174,7 @@ export default function SignUpPage() {
                   <FormItem>
                     <FormLabel>Email</FormLabel>
                     <FormControl>
-                      <Input placeholder="shadcn@example.com" type="email" {...field} />
+                      <Input placeholder="your.email@example.com" type="email" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -178,7 +212,7 @@ export default function SignUpPage() {
                 render={({ field }) => (
                   <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
                     <FormControl>
-                      <Checkbox id="terms" checked={field.value} onCheckedChange={field.onChange} />
+                      <Checkbox checked={field.value} onCheckedChange={field.onChange} id="terms" />
                     </FormControl>
                     <div className="space-y-1 leading-none">
                       <FormLabel htmlFor="terms">
@@ -196,6 +230,8 @@ export default function SignUpPage() {
                   </FormItem>
                 )}
               />
+
+              {/* Regular submit button */}
               <Button type="submit" className="w-full" disabled={isSubmitting}>
                 {isSubmitting ? (
                   <>
@@ -206,14 +242,26 @@ export default function SignUpPage() {
                   "Create account"
                 )}
               </Button>
+
+              {/* Alternative manual submit button for testing */}
+              <Button
+                type="button"
+                className="w-full mt-2"
+                disabled={isSubmitting}
+                onClick={handleManualSubmit}
+                variant="outline"
+              >
+                Create account (alternative)
+              </Button>
             </form>
           </Form>
-          <div className="text-center text-sm">
+
+          <p className="px-8 text-center text-sm text-muted-foreground">
             Already have an account?{" "}
-            <Link href="/login" className="underline underline-offset-2">
+            <Link href="/login" className="underline underline-offset-4 hover:text-primary">
               Sign in
             </Link>
-          </div>
+          </p>
         </div>
       </div>
     </div>
