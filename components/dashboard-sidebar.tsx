@@ -2,11 +2,9 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Music, Users, FileText, DollarSign, Settings, LogOut } from "lucide-react"
+import { LayoutDashboard, Music, Users, FileText, DollarSign, Settings } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 interface DashboardSidebarProps {
   userType: "artist" | "creator" | "admin"
@@ -100,9 +98,6 @@ export function DashboardSidebar({ userType }: DashboardSidebarProps) {
 
   const navLinks = getNavLinks()
 
-  // User display name based on user type
-  const userName = userType === "artist" ? "Artist Name" : userType === "creator" ? "Creator Name" : "Admin User"
-
   return (
     <div className="hidden md:flex w-64 flex-col border-r">
       <div className="flex h-14 items-center border-b px-4">
@@ -126,23 +121,6 @@ export function DashboardSidebar({ userType }: DashboardSidebarProps) {
             </Link>
           ))}
         </nav>
-      </div>
-      <div className="mt-auto p-4 border-t">
-        <div className="flex items-center gap-2">
-          <Avatar className="h-8 w-8">
-            <AvatarImage src="/placeholder.svg?height=32&width=32" alt="User profile" />
-            <AvatarFallback>{userName.charAt(0)}</AvatarFallback>
-          </Avatar>
-          <div className="flex flex-col text-sm">
-            <span>{userName}</span>
-            <span className="text-xs text-muted-foreground capitalize">{userType}</span>
-          </div>
-          <Button variant="ghost" size="icon" className="ml-auto" asChild>
-            <Link href="/auth/logout">
-              <LogOut className="h-4 w-4" />
-            </Link>
-          </Button>
-        </div>
       </div>
     </div>
   )
