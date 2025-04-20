@@ -1,70 +1,90 @@
-// This file contains utilities that can be used in Client Components
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { redirect } from "next/navigation"
+import type { Database } from "@/types/database"
 
-import { createClient } from "./supabase/client"
-
-// Check if user is authenticated (client-side)
+/**
+ * Check if the user is authenticated
+ */
 export async function isAuthenticated() {
-  const supabase = createClient()
+  const supabase = createClientComponentClient<Database>()
   const {
     data: { session },
   } = await supabase.auth.getSession()
   return !!session
 }
 
-// Get the current user (client-side)
-export async function getCurrentUser() {
-  const supabase = createClient()
+/**
+ * Get the user's role
+ */
+export async function getUserRole() {
+  const supabase = createClientComponentClient<Database>()
   const {
     data: { session },
   } = await supabase.auth.getSession()
-  return session?.user || null
-}
 
-// Get user role (client-side)
-export async function getUserRole() {
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
+  if (!session) {
     return null
   }
 
-  try {
-    const { data, error } = await supabase.from("creatoramp_users").select("role").eq("id", user.id).single()
-
-    if (error) {
-      console.error("Error fetching user role:", error)
-      return null
-    }
-
-    return data?.role || null
-  } catch (error) {
-    console.error("Error in getUserRole:", error)
-    return null
-  }
+  return session.user?.user_metadata?.role || null
 }
 
-// Check if user has admin role (client-side)
+/**
+ * Check if the user is an admin
+ */
 export async function isAdmin() {
-  try {
-    const role = await getUserRole()
-    return role === "ADMIN"
-  } catch (error) {
-    console.error("Error in isAdmin check:", error)
-    return false
-  }
+  const role = await getUserRole()
+  return role === "ADMIN"
 }
 
-// Check if user has artist role (client-side)
+/**
+ * Check if the user is an artist
+ */
 export async function isArtist() {
   const role = await getUserRole()
   return role === "ARTIST"
 }
 
-// Check if user has creator role (client-side)
-export async function isCreator() {
-  const role = await getUserRole()
-  return role === "CREATOR"
+/**
+ * Check if the user is a creator
+ */
+export function isCreator() {
+  const supabase = createClientComponentClient<Database>()
+  const {
+    data: { session },
+  } = supabase.auth.getSession()
+
+  if (!session) {
+    return false
+  }
+
+  return session.user?.user_metadata?.role === "CREATOR"
+}
+
+/**
+ * Redirect if the user is not authenticated
+ */
+export function redirectIfNotAuthenticated() {
+  const supabase = createClientComponentClient<Database>()
+  const {
+    data: { session },
+  } = supabase.auth.getSession()
+
+  if (!session) {
+    redirect("/login")
+  }
+}
+
+/**
+ * Redirect if the user is not an admin
+ */
+export function redirectIfNotAdmin() {
+  const supabase = createClientComponentClient<Database>()
+  const {
+    data: { session },
+  } = supabase.auth.getSession()
+
+  if (!session || session.user?.user_metadata?.role !== "ADMIN") {
+    redirect("/login")
+  }
 }

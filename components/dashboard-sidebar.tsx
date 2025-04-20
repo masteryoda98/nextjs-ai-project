@@ -1,127 +1,125 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Music, Users, FileText, DollarSign, Settings } from "lucide-react"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { Home, Users, FileText, DollarSign, Settings, LogOut, Menu, X } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import type { Database } from "@/types/database"
 
-import { cn } from "@/lib/utils"
+type UserRole = "ADMIN" | "ARTIST" | "CREATOR" | null
 
-interface DashboardSidebarProps {
-  userType: "artist" | "creator" | "admin"
-}
-
-export function DashboardSidebar({ userType }: DashboardSidebarProps) {
+export function DashboardSidebar() {
   const pathname = usePathname()
+  const [userRole, setUserRole] = useState<UserRole>(null)
+  const [isOpen, setIsOpen] = useState(false)
 
-  // Navigation links based on user type
-  const getNavLinks = () => {
-    const baseLinks = [
-      {
-        href: `/dashboard/${userType}`,
-        label: "Dashboard",
-        icon: LayoutDashboard,
-      },
-      {
-        href: `/dashboard/${userType}/campaigns`,
-        label: "Campaigns",
-        icon: Music,
-      },
-    ]
+  useEffect(() => {
+    async function getUserRole() {
+      const supabase = createClientComponentClient<Database>()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
 
-    if (userType === "artist") {
-      return [
-        ...baseLinks,
-        {
-          href: `/dashboard/${userType}/submissions`,
-          label: "Submissions",
-          icon: FileText,
-        },
-        {
-          href: `/dashboard/${userType}/finance`,
-          label: "Finance",
-          icon: DollarSign,
-        },
-        {
-          href: `/dashboard/${userType}/settings`,
-          label: "Settings",
-          icon: Settings,
-        },
-      ]
+      if (session) {
+        setUserRole((session.user?.user_metadata?.role as UserRole) || null)
+      }
     }
 
-    if (userType === "creator") {
-      return [
-        ...baseLinks,
-        {
-          href: `/dashboard/${userType}/submissions`,
-          label: "My Submissions",
-          icon: FileText,
-        },
-        {
-          href: `/dashboard/${userType}/earnings`,
-          label: "Earnings",
-          icon: DollarSign,
-        },
-        {
-          href: `/dashboard/${userType}/settings`,
-          label: "Settings",
-          icon: Settings,
-        },
-      ]
-    }
+    getUserRole()
+  }, [])
 
-    // Admin links
-    return [
-      ...baseLinks,
-      {
-        href: `/dashboard/${userType}/users`,
-        label: "Users",
-        icon: Users,
-      },
-      {
-        href: `/dashboard/${userType}/submissions`,
-        label: "Submissions",
-        icon: FileText,
-      },
-      {
-        href: `/dashboard/${userType}/finance`,
-        label: "Finance",
-        icon: DollarSign,
-      },
-      {
-        href: `/dashboard/${userType}/settings`,
-        label: "Settings",
-        icon: Settings,
-      },
-    ]
+  const adminLinks = [
+    { href: "/admin/dashboard", label: "Dashboard", icon: Home },
+    { href: "/admin/campaigns", label: "Campaigns", icon: FileText },
+    { href: "/admin/submissions", label: "Submissions", icon: FileText },
+    { href: "/admin/applications", label: "Applications", icon: Users },
+    { href: "/admin/payouts", label: "Payouts", icon: DollarSign },
+    { href: "/admin/users", label: "Users", icon: Users },
+    { href: "/admin/settings", label: "Settings", icon: Settings },
+  ]
+
+  const artistLinks = [
+    { href: "/dashboard/artist", label: "Dashboard", icon: Home },
+    { href: "/dashboard/artist/campaigns", label: "Campaigns", icon: FileText },
+    { href: "/dashboard/artist/submissions", label: "Submissions", icon: FileText },
+    { href: "/dashboard/artist/finance", label: "Finance", icon: DollarSign },
+    { href: "/dashboard/artist/settings", label: "Settings", icon: Settings },
+  ]
+
+  const creatorLinks = [
+    { href: "/dashboard/creator", label: "Dashboard", icon: Home },
+    { href: "/dashboard/creator/campaigns", label: "Campaigns", icon: FileText },
+    { href: "/dashboard/creator/submissions", label: "Submissions", icon: FileText },
+    { href: "/dashboard/creator/earnings", label: "Earnings", icon: DollarSign },
+    { href: "/dashboard/creator/settings", label: "Settings", icon: Settings },
+  ]
+
+  let links = []
+
+  if (userRole === "ADMIN") {
+    links = adminLinks
+  } else if (userRole === "ARTIST") {
+    links = artistLinks
+  } else if (userRole === "CREATOR") {
+    links = creatorLinks
   }
 
-  const navLinks = getNavLinks()
+  const toggleSidebar = () => {
+    setIsOpen(!isOpen)
+  }
 
   return (
-    <div className="hidden md:flex w-64 flex-col border-r">
-      <div className="flex h-14 items-center border-b px-4">
-        <Link href="/" className="flex items-center gap-2 font-semibold">
-          CreatorAmp
-        </Link>
+    <>
+      <div className="md:hidden p-4">
+        <Button variant="outline" size="icon" onClick={toggleSidebar}>
+          <Menu className="h-5 w-5" />
+        </Button>
       </div>
-      <div className="flex-1 overflow-auto py-2">
-        <nav className="grid items-start px-2 text-sm font-medium">
-          {navLinks.map((link) => (
+
+      <div className={`fixed inset-0 z-50 bg-background md:static md:block ${isOpen ? "block" : "hidden"}`}>
+        <div className="flex h-screen flex-col gap-2 p-4 md:h-full">
+          <div className="flex justify-between items-center md:hidden">
+            <h2 className="text-lg font-semibold">Dashboard</h2>
+            <Button variant="outline" size="icon" onClick={toggleSidebar}>
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+
+          <nav className="flex-1 space-y-2">
+            {links.map((link) => {
+              const Icon = link.icon
+              const isActive = pathname === link.href
+
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all ${
+                    isActive ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {link.label}
+                </Link>
+              )
+            })}
+          </nav>
+
+          <div className="border-t pt-4">
             <Link
-              key={link.href}
-              href={link.href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground hover:text-foreground hover:bg-accent transition-all",
-                pathname === link.href ? "bg-accent text-accent-foreground" : "",
-              )}
+              href="/auth/logout"
+              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-muted transition-all"
             >
-              <link.icon className="h-4 w-4" />
-              {link.label}
+              <LogOut className="h-4 w-4" />
+              Logout
             </Link>
-          ))}
-        </nav>
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   )
 }
+
+export default DashboardSidebar
