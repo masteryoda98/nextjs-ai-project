@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Loader2 } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 export default function SignupDiagnosticPage() {
   const [isLoading, setIsLoading] = useState(true)
@@ -14,12 +16,18 @@ export default function SignupDiagnosticPage() {
   const [signupResult, setSignupResult] = useState<any>(null)
   const [signupError, setSignupError] = useState<string | null>(null)
   const [isTestingSignup, setIsTestingSignup] = useState(false)
+  const [useCustomEmail, setUseCustomEmail] = useState(false)
+  const [customEmail, setCustomEmail] = useState("")
+  const [customPassword, setCustomPassword] = useState("")
 
-  // Generate random test credentials
+  // Generate random test credentials with realistic domain
   useEffect(() => {
     const randomString = Math.random().toString(36).substring(2, 10)
-    setTestEmail(`test-${randomString}@example.com`)
+    // Using gmail.com which is more likely to pass validation
+    setTestEmail(`test.user.${randomString}@gmail.com`)
     setTestPassword(`Password${randomString}!`)
+    setCustomEmail(`test.user.${randomString}@gmail.com`)
+    setCustomPassword(`Password${randomString}!`)
   }, [])
 
   // Run diagnostics on component mount
@@ -89,23 +97,49 @@ export default function SignupDiagnosticPage() {
     setSignupError(null)
 
     try {
-      console.log(`Testing signup with email: ${testEmail}`)
+      const emailToUse = useCustomEmail ? customEmail : testEmail
+      const passwordToUse = useCustomEmail ? customPassword : testPassword
+
+      console.log(`Testing signup with email: ${emailToUse}`)
       const supabase = createClientComponentClient()
 
+      // First check if the user already exists
+      const { data: existingUser, error: checkError } = await supabase.auth.signInWithPassword({
+        email: emailToUse,
+        password: passwordToUse,
+      })
+
+      if (existingUser?.user) {
+        console.log("User already exists, using existing account for test")
+        setSignupResult({
+          user: existingUser.user,
+          message: "Used existing account (this email was already registered)",
+        })
+        setIsTestingSignup(false)
+        return
+      }
+
+      // Try to create a new user
       const { data, error } = await supabase.auth.signUp({
-        email: testEmail,
-        password: testPassword,
+        email: emailToUse,
+        password: passwordToUse,
         options: {
           data: {
             name: "Test User",
             role: "CREATOR",
           },
+          emailRedirectTo: `${window.location.origin}/verify-email`,
         },
       })
 
       if (error) {
         console.error("Test signup error:", error)
         setSignupError(error.message)
+
+        // Provide helpful suggestions based on common errors
+        if (error.message.includes("invalid")) {
+          setSignupError(`${error.message}. Try using a real email domain like gmail.com or outlook.com.`)
+        }
       } else {
         console.log("Test signup successful:", data)
         setSignupResult(data)
@@ -151,26 +185,65 @@ export default function SignupDiagnosticPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Test Email</label>
+              <div className="flex items-center space-x-2">
                 <input
-                  type="email"
-                  value={testEmail}
-                  onChange={(e) => setTestEmail(e.target.value)}
-                  className="w-full p-2 border rounded-md"
-                  readOnly
+                  type="checkbox"
+                  id="useCustomEmail"
+                  checked={useCustomEmail}
+                  onChange={(e) => setUseCustomEmail(e.target.checked)}
+                  className="rounded border-gray-300"
                 />
+                <Label htmlFor="useCustomEmail">Use custom credentials</Label>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Test Password</label>
-                <input
-                  type="text"
-                  value={testPassword}
-                  onChange={(e) => setTestPassword(e.target.value)}
-                  className="w-full p-2 border rounded-md"
-                  readOnly
-                />
-              </div>
+
+              {useCustomEmail ? (
+                <>
+                  <div>
+                    <Label htmlFor="customEmail" className="block text-sm font-medium mb-1">
+                      Custom Email
+                    </Label>
+                    <Input
+                      id="customEmail"
+                      type="email"
+                      value={customEmail}
+                      onChange={(e) => setCustomEmail(e.target.value)}
+                      className="w-full"
+                      placeholder="user@gmail.com"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Use a real email domain like gmail.com or outlook.com
+                    </p>
+                  </div>
+                  <div>
+                    <Label htmlFor="customPassword" className="block text-sm font-medium mb-1">
+                      Custom Password
+                    </Label>
+                    <Input
+                      id="customPassword"
+                      type="text"
+                      value={customPassword}
+                      onChange={(e) => setCustomPassword(e.target.value)}
+                      className="w-full"
+                      placeholder="Password must be at least 8 characters"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <Label htmlFor="testEmail" className="block text-sm font-medium mb-1">
+                      Test Email
+                    </Label>
+                    <Input id="testEmail" type="email" value={testEmail} className="w-full" readOnly />
+                  </div>
+                  <div>
+                    <Label htmlFor="testPassword" className="block text-sm font-medium mb-1">
+                      Test Password
+                    </Label>
+                    <Input id="testPassword" type="text" value={testPassword} className="w-full" readOnly />
+                  </div>
+                </>
+              )}
 
               <Button onClick={testSignup} disabled={isTestingSignup} className="w-full">
                 {isTestingSignup ? (
@@ -193,7 +266,11 @@ export default function SignupDiagnosticPage() {
               {signupResult && (
                 <div className="bg-green-50 border border-green-200 text-green-700 p-3 rounded-md">
                   <p className="font-medium">Success!</p>
-                  <p>User created successfully.</p>
+                  {signupResult.message ? (
+                    <p>{signupResult.message}</p>
+                  ) : (
+                    <p>User created successfully. Check email for verification link.</p>
+                  )}
                 </div>
               )}
             </div>
@@ -208,6 +285,12 @@ export default function SignupDiagnosticPage() {
         <h2 className="text-xl font-bold mb-4">Common Issues & Solutions</h2>
         <div className="space-y-4">
           <div className="p-4 border rounded-md">
+            <h3 className="font-medium">Invalid Email Error</h3>
+            <p>
+              Supabase rejects emails with domains like example.com. Use real domains like gmail.com or outlook.com.
+            </p>
+          </div>
+          <div className="p-4 border rounded-md">
             <h3 className="font-medium">Missing Environment Variables</h3>
             <p>Ensure all required environment variables are set in your production environment.</p>
           </div>
@@ -218,10 +301,6 @@ export default function SignupDiagnosticPage() {
           <div className="p-4 border rounded-md">
             <h3 className="font-medium">Authentication Settings</h3>
             <p>Verify that email signup is enabled in your Supabase Authentication settings.</p>
-          </div>
-          <div className="p-4 border rounded-md">
-            <h3 className="font-medium">Network/Firewall Issues</h3>
-            <p>Some hosting environments might block outgoing requests to external services.</p>
           </div>
         </div>
       </div>
